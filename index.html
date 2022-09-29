@@ -1,26 +1,207 @@
-<!DOCTYPE html>
-<html>
 
-<head>
-    <style>
-        .myDiv {
-            border: 5px outset red;
-            background-color: lightblue;
-            text-align: center;
+<!DOCTYPE html><html><head><meta charset=utf-8><meta name=robots content=noindex><meta id=HFS_ThemeColor name=theme-color content=#e3000f><meta name=viewport content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=2"><meta id=MsApplicationTileImage name=msapplication-TileImage content="img/customer/apple-touch-icon-144x144-precomposed.png?v=1662705509068"><title>KVB</title><link id=HFS_AppleTouchIconPrecomposed144 rel=apple-touch-icon-precomposed sizes=144x144 href="img/customer/apple-touch-icon-144x144-precomposed.png?v=1662705509068"><link id=HFS_AppleTouchIconPrecomposed114 rel=apple-touch-icon-precomposed sizes=114x114 href="img/customer/apple-touch-icon-114x114-precomposed.png?v=1662705509068"><link id=HFS_AppleTouchIconPrecomposed72 rel=apple-touch-icon-precomposed sizes=72x72 href="img/customer/apple-touch-icon-72x72-precomposed.png?v=1662705509068"><link id=HFS_AppleTouchIconPrecomposed57 rel=apple-touch-icon-precomposed href="img/customer/apple-touch-icon-57x57-precomposed.png?v=1662705509068"><link id=HFS_ShortcutIcon196 rel="shortcut icon" sizes=196x196 href="img/customer/touch-icon-196x196.png?v=1662705509068"><link id=HFS_ShortcutIcon rel="shortcut icon" href="img/customer/apple-touch-icon.png?v=1662705509068"><link rel=manifest href="manifest.json?v=151"><link rel=preload href=css/leaflet/leaflet.min.css as=style><link rel=preload href=css/fonts/roboto-v18-latin-500.woff2 as=font type=font/woff2 crossorigin><link rel=preload href=css/fonts/roboto-v18-latin-700.woff2 as=font type=font/woff2 crossorigin><script type=text/javascript src="js/hafas_lib_core.js?v=1662705509068" defer></script><script type=text/javascript>
+    var path = 'js/';
+
+    // intentional redundancy
+    // this way the script can load before core was loaded
+    function determineLanguage(options){
+        options = options || {};
+
+        var possibleLangs = [];
+
+        // PRIO 1: check for URL-Parameter "language"
+        // Temporär umgezogen
+        if (hfsMetadata.Switches.useLanguageSwitch && options.urlParam) {
+          var urlLang = Hafas.Core.getParameterByName(options.urlParam);
+
+          if (urlLang)
+            possibleLangs.push(urlLang);
         }
 
-        .mvv-departure-monitor {
-            height: 100%;
-            width: 100%;
-
+        // PRIO 2: language via options
+        if(options.language) {
+          possibleLangs.push(options.language);
         }
-    </style>
-    <script src="https://auskunft.kvb.koeln/staticfiles/hafas-widget-core.1.0.0.js?language=de_DE"></script>
-</head>
 
-<body>
-    <div data-hfs-widget="true" data-hfs-widget-sq="true" data-hfs-widget-sq-displaymode="results" data-hfs-widget-sq-location="A=1@O=Köln Hansaring@X=6951628@Y=50948764@U=1@L=900000036@B=1@p=1664271192@" data-hfs-widget-sq-locationname="Köln Hansaring"></div>
+        // PRIO 3: local storage
+        try {
+          if (options.localStorageKey && localStorage && localStorage.getItem && options.localStorageKey) {
+            var lsLang = localStorage.getItem(options.localStorageKey);
+            if (lsLang) {
+              lsLang = JSON.parse(lsLang);
+
+              // check if entry is expired
+              if (new Date().getTime() > lsLang.expires) {
+                localStorage.removeItem(options.localStorageKey);
+              }
+              else {
+                possibleLangs.push(lsLang.lang);
+              }
+            }
+          }
+        } catch (e) {
+          console.log("i18n.readFromStorage", "Fehler: Sprache kann nicht aus localStorage gelesen werden.", e);
+        }
+
+        // PRIO 4: browser language
+        // Allgemein gibt der Browser ein Sprachkürzel an (-> shortcode 'de').
+        // Je nachdem ob der Benutzer ein Land angibt, wird das Länderkürzel  herausgegeben (-> fullcode 'de_DE').
+        // Wird der fullcode gefunden wird die Spracheinstellung übernommen.
+        if (hfsMetadata.Switches.useBrowserLanguage && (navigator.language || navigator.browserLanguage)) {
+          // navigator.language // navigator.browserLanguage (alteIE)
+          // Internet Explorer 11: de-DE
+          // Opera/Firefox/Chrome: de/en-US/en-GB (Firefox kann Sprache detailliert einstellen)
+          // Kürzel wird in der Webapp mit Unterstrich angegeben (daher replace)
+          var browserLang = (navigator.language || navigator.browserLanguage || '').replace('-', '_');
+          possibleLangs.push(browserLang);
+          // Extrahiere Sprachcode
+          possibleLangs.push(browserLang.slice(0, 2));
+        }
+
+        // PRIO 5: default language
+        possibleLangs.push(hfsMetadata.defaultLang);
+
+        var allLangs = hfsMetadata.languages;
+
+        for (var i = 0, size = possibleLangs.length; i < size; i++) {
+          var posLang = possibleLangs[i];
+
+          for (var j = 0, jSize = allLangs.length; j < jSize; j++) {
+            var curLang = allLangs[j];
+
+            if (curLang.lang === posLang || curLang.iso === posLang || curLang.hciLang === posLang) {
+              return curLang;
+            }
+          }
+        }
+        // Wenn alle Stricke reißen...
+        return allLangs[0];
+    }
+
+    function getURLParameter(name) {
+      return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
+    }
+
+    function isValidVirtualClient(vc){
+      return new RegExp("vs_[^<>]*$","g").test(vc);
+    }
+
+    function getDefaultLang(){
+      for(var l=0; l < hfsMetadata.languages.length;l++){
+        var lang = hfsMetadata.languages[l];
+        if(lang.isDefault){
+          hfsMetadata.defaultLang = lang.lang;
+        }
+      }
+    }
+
+    function initSplashScreen(){
+      // Determin defaultLang
+      getDefaultLang();
+      if(hfsMetadata.Switches.useSplashScreen == false){
+        return;
+      }
+      // Logo zeigen
+      if(hfsMetadata.Splashscreen.mode == 'BOTH' || hfsMetadata.Splashscreen.mode == 'LOGO'){
+        document.getElementById('HFS_SplashscreenLogo').style.display = '';
+        document.getElementById('HFS_SplashscreenLogoImage').width = hfsMetadata.Splashscreen.logoWidth;
+        document.getElementById('HFS_SplashscreenLogoImage').src = hfsMetadata.imageBasePath + hfsMetadata.Splashscreen.logo;
+      }
+      // Text zeigen
+      if(hfsMetadata.Splashscreen.mode == 'BOTH' || hfsMetadata.Splashscreen.mode == 'TEXT'){
+        document.getElementById('HFS_SplashscreenText').style.display = '';
+      }
+      // Loading Spinner
+      if(hfsMetadata.Splashscreen.showLoadingSpinner == true){
+        document.getElementById('HFS_SplashSpinner').style.display = '';
+      }
+      // Progress Bar
+      if(hfsMetadata.Splashscreen.showProgress == true){
+        document.getElementById('HFS_SplashProgress').style.display = '';
+      }
+      var langParam = getURLParameter("language");
+
+      var language = determineLanguage({
+        language: langParam
+      });
+      var descriptionText = (typeof hfsMetadata.description == 'string')?hfsMetadata.description:hfsMetadata.description[language.lang];
+      document.getElementById('HFS_SplashTitle').innerHTML = hfsMetadata.name;
+      document.getElementById('HFS_SplashDesc').innerHTML = descriptionText;
+    }
+
+    var subPath = getURLParameter("L");
+    var embedConfig = true;
+    if(subPath) {
+      if(!isValidVirtualClient(subPath)){
+        embedConfig = false;
+      }
+      path = 'customer/' + subPath + '/js/';
+    }
+    if(embedConfig) {
+      if(subPath) {
+        document.write('<script type="text\/javascript" src="' + path + 'metadata.js?v=1662705509068"><\/script>');
+        <!-- Binde die tracking.js en, wenn das tracking in der config auf true steht -->
+        
+      }else{
+        document.write('<script type="text\/javascript" src="metadata.js?v=1662705509068"><\/script>');
+        <!-- Binde die tracking.js en, wenn das tracking in der config auf true steht -->
+        
+      }
+      document.write('<script  type="text\/javascript" src="' + path + 'hafas_webapp_config.js?v=1662705509068" defer><\/script>');
+    }
+
+  </script><script type=text/javascript src="js/hafas_webapp_application.js?v=1662705509068" defer></script><style>
+  
+
+    .lyr_splashScreen {
+      font-family: sans-serif;
+      font-size: 14px;
+      position: fixed;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      background-color: #E2E2E2;
+      color: #FFFFFF;
+      opacity: 1;
+      text-align: center;
+    }
+    .lyr_splashScreenLogo{
+      margin-bottom:8px;
+    }
+
+    .lyr_statusWrapper {
+      height: 150px;
+    }
+
     
-</body>
 
-</html>
+    #HFS_NoScript .table1{
+      margin-top: 20px;
+      color: #D30D42;
+    }
+    #HFS_NoScript .table2{
+      margin-top: 20px;
+      color: #24242A;
+    }
+    #HFS_NoScript td{
+      padding-top: 5px;
+      padding-bottom: 5px;
+      text-align: left;
+    }
+    #HFS_NoScript .caption{
+      font-size: large;
+      font-weight: bold;
+    }
+  </style></head><body class=lyr onload="initSplashScreen();Hafas.Core.init(); Hafas.Core.initHead({cssBasePath: 'css/', imgBasePath:'img/',version:'151'});"><div id=HFS_Splashscreen class=lyr_splashScreen><noscript><section id=HFS_NoScript><table class=table1><tr><td class=caption>German:</td></tr><tr><td>JavaScript ist deaktiviert. Aktivieren Sie JavaScript und aktualisieren Sie die Seite.</td></tr><tr><td class=caption>English:</td></tr><tr><td>JavaScript is deactivated. Please activate JavaScript and refresh the page.</td></tr><tr><td class=caption>French:</td></tr><tr><td>JavaScript est désactivé. Veuillez activer JavaScript et actualiser la page.</td></tr><tr><td class=caption>Spanish:</td></tr><tr><td>JavaScript está desactivado. Active JavaScript y actualice la página.</td></tr></table><table class=table2><tr><td class=caption>How to activate JavaScript on your browser</td></tr><tr><td>On your browser take the following steps to activate javascript on your system.</td></tr><tr><td><ul><li>Click on the browser side menu</li><li>Select more tools</li><li>Select Developer tools or Web Developer tools depending on the browser you are using</li><li>Click on the setting <i class=haf_action_settings aria-hidden=true></i>icon and scroll down to Debugger section</li><li>Deselect javascript</li><li>Refresh your browser</li></ul></td></tr></table></section></noscript><div id=HFS_SplashscreenLogo class=lyr_splashScreenLogo style=display:none;><img id=HFS_SplashscreenLogoImage alt=Logo src="img/customer/hacon_logo_white.svg?v=1662705509068"></div><div id=HFS_SplashscreenText style=display:none;><h1 id=HFS_SplashTitle></h1><p id=HFS_SplashDesc></p></div><div class=lyr_statusWrapper><div id=HFS_SplashProgress style=display:none;></div><div id=HFS_SplashSpinner style=display:none; class=lyr_atomSpinner></div></div></div><div id=HFS_WebApp data-hfs-content=webapp data-iframe-height=webapp class=lyr_wrapApplication></div><div id=DynamicTemplates hidden></div><script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function (registrations) {
+    for (var i = 0, size = registrations.length; i < size; i++)
+      var _reg = registrations[i].unregister()
+  })
+}
+</script></body></html>
